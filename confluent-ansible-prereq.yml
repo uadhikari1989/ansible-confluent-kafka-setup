@@ -1,0 +1,48 @@
+---
+ - name: Set Hostname
+   hosts: all
+   tasks:
+    - name: Execute CentOS repo
+      shell: |
+        sed -i 's/mirrorlist/#mirrorlist/g' /etc/yum.repos.d/CentOS-Linux-*
+        sed -i 's|#baseurl=http://mirror.centos.org|baseurl=http://vault.centos.org|g' /etc/yum.repos.d/CentOS-Linux-*
+
+    - name: Update Hostname
+      shell: "hostname {{inventory_hostname}}"
+
+    - name: Update hostname in the etchostname
+      shell: "echo {{inventory_hostname}} > /etc/hostname"
+
+    - name: Gather facts once again
+      setup:
+
+    - name: Update the /etc/hosts file with node name
+      tags: etchostsupdate
+      lineinfile:
+        path: "/etc/hosts"
+        regexp: ".*\t{{ hostvars[item]['ansible_hostname']}}\t{{ hostvars[item]['ansible_hostname']}}"
+        line: "{{ hostvars[item]['ansible_env'].SSH_CONNECTION.split(' ')[2] }}\t{{ hostvars[item]['ansible_hostname']}}\t{{ hostvars[item]['ansible_hostname']}}"
+        state: present
+        backup: yes
+      register: etchostsupdate
+      when: ansible_hostname != "{{ item }}" or ansible_hostname == "{{ item }}"
+      with_items: "{{groups['all']}}"
+
+    - name: Allow connections on multiple ports
+      tags: firewallupdate
+      ansible.builtin.iptables:
+        chain: INPUT
+        protocol: tcp
+        action: insert
+        rule_num: 5
+        ctstate: NEW,ESTABLISHED
+        destination_ports:
+          - "2181"
+          - "9091"
+          - "9092"
+          - "8083"
+          - "8088"
+          - "8081"
+          - "9021"
+          - "8090"
+        jump: ACCEPT
